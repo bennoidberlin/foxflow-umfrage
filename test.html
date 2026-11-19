@@ -223,13 +223,12 @@ function micBlock(textarea, key){
       if (recOn){ stopRec(); setLabel(); return; }
       var got = false, failed = false;
       try {
-        rec = new SR(); rec.lang = "de-DE"; rec.continuous = !IOS; rec.interimResults = true; rec.maxAlternatives = 1;
+        rec = new SR(); rec.lang = "de-DE"; rec.continuous = false; rec.interimResults = true; rec.maxAlternatives = 1;
         var baseText = textarea.value ? textarea.value.replace(/\s*$/, " ") : "";
-        var finals = "";
         rec.onstart = function(){ say("Ich höre zu – sprich einfach los.", false); };
         rec.onresult = function(ev){
-          var interim = "";
-          for (var i = ev.resultIndex; i < ev.results.length; i++){
+          var finals = "", interim = "";
+          for (var i = 0; i < ev.results.length; i++){
             if (ev.results[i].isFinal) finals += ev.results[i][0].transcript + " ";
             else interim += ev.results[i][0].transcript;
           }
@@ -248,7 +247,7 @@ function micBlock(textarea, key){
         };
         rec.onend = function(){
           recOn = false; setLabel(); setA(key, textarea.value.trim());
-          if (!failed) say(got ? (IOS ? "Fertig. Du kannst noch einmal tippen und weitersprechen oder den Text ändern." : defaultTip) : MIC_TEXT.nothing, !got);
+          if (!failed) say(got ? "Fertig. Du kannst noch einmal tippen und weitersprechen oder den Text ändern." : MIC_TEXT.nothing, !got);
         };
         rec.start(); recOn = true; setLabel();
       } catch(e){ recOn = false; setLabel(); say(MIC_TEXT.other, true); }
