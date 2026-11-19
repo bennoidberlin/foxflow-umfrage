@@ -198,38 +198,67 @@ function renderChoiceList(container, key, options, display, multi, max, exclusiv
 }
 
 var SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+var UA = navigator.userAgent || "";
+var IOS = /iPhone|iPad|iPod/.test(UA) || (/Macintosh/.test(UA) && navigator.maxTouchPoints > 1);
+var INAPP = /Instagram|FBAN|FBAV|FB_IAB|LinkedInApp|Line\/|Snapchat|TikTok|musical_ly|; wv\)/.test(UA);
 var rec = null, recOn = false;
 function stopRec(){ if (rec && recOn){ try { rec.stop(); } catch(e){} } recOn = false; }
+var MIC_TEXT = {
+  blocked: IOS ? "Das Mikrofon ist gesperrt. Auf dem iPhone muss die Diktierfunktion an sein (Einstellungen › Allgemein › Tastatur › Diktierfunktion). Oder: Tippe ins Feld und nutze das Mikrofon auf deiner Tastatur." : "Das Mikrofon ist gesperrt. Erlaube den Zugriff in deinem Browser – oder tippe ins Feld und nutze das Mikrofon auf deiner Tastatur.",
+  nothing: "Ich habe leider nichts verstanden. Tippe nochmal auf „Antwort einsprechen“ und sprich direkt los – oder nutze das Mikrofon auf deiner Tastatur.",
+  nomic: "Es wurde kein Mikrofon gefunden. Tippe ins Feld und nutze das Mikrofon auf deiner Tastatur.",
+  network: "Die Spracherkennung ist gerade nicht erreichbar. Tippe ins Feld und nutze das Mikrofon auf deiner Tastatur.",
+  other: "Die Spracheingabe hat hier nicht geklappt. Tippe ins Feld und nutze das Mikrofon auf deiner Tastatur – das funktioniert immer."
+};
 function micBlock(textarea, key){
   var frag = document.createDocumentFragment();
-  if (SR){
+  var tip = el("p", { "class":"small" });
+  var defaultTip = "Du siehst deinen Text sofort und kannst ihn danach noch ändern. Alternativ: Mikrofon-Taste auf deiner Handy-Tastatur.";
+  function say(t, warn){ tip.textContent = t; tip.style.color = warn ? "#9E2F25" : ""; }
+  if (SR && !INAPP){
     var btn = el("button", { type:"button", "class":"mic" });
-    var setLabel = function(){ btn.innerHTML = (recOn ? '<svg viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="6" width="12" height="12" rx="2"/></svg>Fertig gesprochen' : '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="2" width="6" height="12" rx="3"/><path d="M5 11a7 7 0 0 0 14 0M12 18v4"/></svg>Antwort einsprechen'); btn.classList.toggle("rec", recOn); };
+    var setLabel = function(){ btn.innerHTML = (recOn ? '<svg viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="6" width="12" height="12" rx="2"/></svg>Ich höre zu … fertig' : '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="2" width="6" height="12" rx="3"/><path d="M5 11a7 7 0 0 0 14 0M12 18v4"/></svg>Antwort einsprechen'); btn.classList.toggle("rec", recOn); };
     setLabel();
     btn.addEventListener("click", function(){
       if (recOn){ stopRec(); setLabel(); return; }
+      var got = false, failed = false;
       try {
-        rec = new SR(); rec.lang = "de-DE"; rec.continuous = true; rec.interimResults = true;
+        rec = new SR(); rec.lang = "de-DE"; rec.continuous = false; rec.interimResults = true; rec.maxAlternatives = 1;
         var baseText = textarea.value ? textarea.value.replace(/\s*$/, " ") : "";
-        var finals = "";
+        rec.onstart = function(){ say("Ich höre zu – sprich einfach los.", false); };
         rec.onresult = function(ev){
-          var interim = "";
-          for (var i = ev.resultIndex; i < ev.results.length; i++){
+          var finals = "", interim = "";
+          for (var i = 0; i < ev.results.length; i++){
             if (ev.results[i].isFinal) finals += ev.results[i][0].transcript + " ";
             else interim += ev.results[i][0].transcript;
           }
+          if (finals || interim) got = true;
           textarea.value = (baseText + finals + interim).replace(/\s+$/, interim ? "" : " ");
           setA(key, textarea.value.trim());
         };
-        rec.onerror = function(ev){ recOn = false; setLabel(); if (ev && (ev.error === "not-allowed" || ev.error === "service-not-allowed")) showTip(true); };
-        rec.onend = function(){ recOn = false; setLabel(); setA(key, textarea.value.trim()); };
+        rec.onerror = function(ev){
+          failed = true; recOn = false; setLabel();
+          var e = ev && ev.error;
+          if (e === "not-allowed" || e === "service-not-allowed") say(MIC_TEXT.blocked, true);
+          else if (e === "no-speech") say(MIC_TEXT.nothing, true);
+          else if (e === "audio-capture") say(MIC_TEXT.nomic, true);
+          else if (e === "network") say(MIC_TEXT.network, true);
+          else if (e !== "aborted") say(MIC_TEXT.other, true);
+        };
+        rec.onend = function(){
+          recOn = false; setLabel(); setA(key, textarea.value.trim());
+          if (!failed) say(got ? "Fertig. Du kannst noch einmal tippen und weitersprechen oder den Text ändern." : MIC_TEXT.nothing, !got);
+        };
         rec.start(); recOn = true; setLabel();
-      } catch(e){ recOn = false; setLabel(); showTip(true); }
+      } catch(e){ recOn = false; setLabel(); say(MIC_TEXT.other, true); }
     });
     frag.appendChild(btn);
+    say(defaultTip, false);
+  } else if (INAPP){
+    say("Tipp: Für die Spracheingabe öffne den Link in Safari oder Chrome (oben rechts über „…“). Oder tippe ins Feld und nutze das Mikrofon auf deiner Tastatur.", false);
+  } else {
+    say("Tipp: Tippe ins Feld und nutze das Mikrofon auf deiner Handy-Tastatur – dann kannst du einfach sprechen.", false);
   }
-  var tip = el("p", { "class":"small", text: SR ? "Du siehst deinen Text sofort und kannst ihn danach noch ändern. Alternativ: Mikrofon-Taste auf deiner Handy-Tastatur." : "Tipp: Tippe ins Feld und nutze das Mikrofon auf deiner Handy-Tastatur – dann kannst du einfach sprechen." });
-  function showTip(blocked){ if (blocked) tip.textContent = "Das Mikrofon ist hier gesperrt. Kein Problem: Tippe ins Feld und nutze das Mikrofon auf deiner Handy-Tastatur."; }
   frag.appendChild(tip);
   return frag;
 }
